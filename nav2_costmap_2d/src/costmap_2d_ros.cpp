@@ -43,6 +43,7 @@
 #include <string>
 #include <vector>
 #include <utility>
+#include <algorithm>
 
 #include "nav2_costmap_2d/layered_costmap.hpp"
 #include "nav2_util/execution_timer.hpp"
@@ -58,19 +59,51 @@ using rcl_interfaces::msg::ParameterType;
 
 namespace nav2_costmap_2d
 {
+
+namespace
+{
+
+
+/**
+   * @brief  Add aditional arguments to NodeOptions directly before the 1st instance of "--ros-args"
+   * @param options NodeOptions to append to
+   * @param extra_arguments extra arguments to prepend
+   */
+rclcpp::NodeOptions
+prepend_arguments(rclcpp::NodeOptions options, const std::vector<std::string>& extra_arguments)
+{
+  std::vector<std::string> arguments = options.arguments();
+  arguments.insert(std::find(arguments.begin(), arguments.end(), "--ros-args"),
+    extra_arguments.cbegin(), extra_arguments.cend());
+  return options.arguments(arguments);
+}
+
+}
+
 Costmap2DROS::Costmap2DROS(const std::string & name)
-: Costmap2DROS(name, "/", name) {}
+: Costmap2DROS(name, "/", name, rclcpp::NodeOptions()) {}
+
+Costmap2DROS::Costmap2DROS(const std::string & name, 
+  const rclcpp::NodeOptions & options)
+: Costmap2DROS(name, "/", name, options) {}
 
 Costmap2DROS::Costmap2DROS(
   const std::string & name,
   const std::string & parent_namespace,
   const std::string & local_namespace)
+: Costmap2DROS(name, parent_namespace, local_namespace, rclcpp::NodeOptions()) {}
+
+Costmap2DROS::Costmap2DROS(
+  const std::string & name,
+  const std::string & parent_namespace,
+  const std::string & local_namespace,
+  const rclcpp::NodeOptions & options)
 : nav2_util::LifecycleNode(name, "",
     // NodeOption arguments take precedence over the ones provided on the command line
     // use this to make sure the node is placed on the provided namespace
     // TODO(orduno) Pass a sub-node instead of creating a new node for better handling
     //              of the namespaces
-    rclcpp::NodeOptions().arguments({
+    prepend_arguments(options, {
     "--ros-args", "-r", std::string("__ns:=") +
     nav2_util::add_namespaces(parent_namespace, local_namespace),
     "--ros-args", "-r", name + ":" + std::string("__node:=") + name
