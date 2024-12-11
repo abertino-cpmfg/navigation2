@@ -25,6 +25,7 @@
 #include "nav2_msgs/action/navigate_to_pose.hpp"
 #include "nav2_behavior_tree/bt_action_server.hpp"
 #include "ament_index_cpp/get_package_share_directory.hpp"
+#include "nav2_util/node_utils.hpp"
 
 namespace nav2_behavior_tree
 {
@@ -59,6 +60,12 @@ BtActionServer<ActionT>::BtActionServer(
   if (!node->has_parameter("default_server_timeout")) {
     node->declare_parameter("default_server_timeout", 20);
   }
+  if (!node->has_parameter("always_reload_bt_xml")) {
+    node->declare_parameter("always_reload_bt_xml", false);
+  }
+  if (!node->has_parameter("wait_for_service_timeout")) {
+    node->declare_parameter("wait_for_service_timeout", 1000);
+  }
 }
 
 template<class ActionT>
@@ -87,6 +94,17 @@ bool BtActionServer<ActionT>::on_configure()
   // Support for handling the topic-based goal pose from rviz
   client_node_ = std::make_shared<rclcpp::Node>("_", options);
 
+  // Declare parameters for common client node applications to share with BT nodes
+  // Declare if not declared in case being used an external application, then copying
+  // all of the main node's parameters to the client for BT nodes to obtain
+  nav2_util::declare_parameter_if_not_declared(
+    node, "global_frame", rclcpp::ParameterValue(std::string("map")));
+  nav2_util::declare_parameter_if_not_declared(
+    node, "robot_base_frame", rclcpp::ParameterValue(std::string("base_link")));
+  nav2_util::declare_parameter_if_not_declared(
+    node, "transform_tolerance", rclcpp::ParameterValue(0.1));
+  nav2_util::copy_all_parameters(node, client_node_);
+
   action_server_ = std::make_shared<ActionServer>(
     node->get_node_base_interface(),
     node->get_node_clock_interface(),
@@ -100,6 +118,10 @@ bool BtActionServer<ActionT>::on_configure()
   bt_loop_duration_ = std::chrono::milliseconds(timeout);
   node->get_parameter("default_server_timeout", timeout);
   default_server_timeout_ = std::chrono::milliseconds(timeout);
+  int wait_for_service_timeout;
+  node->get_parameter("wait_for_service_timeout", wait_for_service_timeout);
+  wait_for_service_timeout_ = std::chrono::milliseconds(wait_for_service_timeout);
+  node->get_parameter("always_reload_bt_xml", always_reload_bt_xml_);
 
   // Create the class that registers our custom nodes and executes the BT
   bt_ = std::make_unique<nav2_behavior_tree::BehaviorTreeEngine>(plugin_lib_names_);
@@ -111,6 +133,9 @@ bool BtActionServer<ActionT>::on_configure()
   blackboard_->set<rclcpp::Node::SharedPtr>("node", client_node_);  // NOLINT
   blackboard_->set<std::chrono::milliseconds>("server_timeout", default_server_timeout_);  // NOLINT
   blackboard_->set<std::chrono::milliseconds>("bt_loop_duration", bt_loop_duration_);  // NOLINT
+  blackboard_->set<std::chrono::milliseconds>(
+    "wait_for_service_timeout",
+    wait_for_service_timeout_);
 
   return true;
 }
@@ -153,8 +178,8 @@ bool BtActionServer<ActionT>::loadBehaviorTree(const std::string & bt_xml_filena
   // Empty filename is default for backward compatibility
   auto filename = bt_xml_filename.empty() ? default_bt_xml_filename_ : bt_xml_filename;
 
-  // Use previous BT if it is the existing one
-  if (current_bt_xml_filename_ == filename) {
+  // Use previous BT if it is the existing one and always reload flag is not set to true
+  if (!always_reload_bt_xml_ && current_bt_xml_filename_ == filename) {
     RCLCPP_DEBUG(logger_, "BT will not be reloaded as the given xml is already loaded");
     return true;
   }
@@ -174,6 +199,14 @@ bool BtActionServer<ActionT>::loadBehaviorTree(const std::string & bt_xml_filena
   // Create the Behavior Tree from the XML input
   try {
     tree_ = bt_->createTreeFromText(xml_string, blackboard_);
+    for (auto & blackboard : tree_.blackboard_stack) {
+      blackboard->set<rclcpp::Node::SharedPtr>("node", client_node_);
+      blackboard->set<std::chrono::milliseconds>("server_timeout", default_server_timeout_);
+      blackboard->set<std::chrono::milliseconds>("bt_loop_duration", bt_loop_duration_);
+      blackboard->set<std::chrono::milliseconds>(
+        "wait_for_service_timeout",
+        wait_for_service_timeout_);
+    }
   } catch (const std::exception & e) {
     RCLCPP_ERROR(logger_, "Exception when loading BT: %s", e.what());
     return false;
@@ -227,18 +260,18 @@ void BtActionServer<ActionT>::executeCallback()
 
   switch (rc) {
     case nav2_behavior_tree::BtStatus::SUCCEEDED:
-      RCLCPP_INFO(logger_, "Goal succeeded");
       action_server_->succeeded_current(result);
+      RCLCPP_INFO(logger_, "Goal succeeded");
       break;
 
     case nav2_behavior_tree::BtStatus::FAILED:
-      RCLCPP_ERROR(logger_, "Goal failed");
       action_server_->terminate_current(result);
+      RCLCPP_ERROR(logger_, "Goal failed");
       break;
 
     case nav2_behavior_tree::BtStatus::CANCELED:
-      RCLCPP_INFO(logger_, "Goal canceled");
       action_server_->terminate_all(result);
+      RCLCPP_INFO(logger_, "Goal canceled");
       break;
   }
 }

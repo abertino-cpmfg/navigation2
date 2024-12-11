@@ -18,7 +18,7 @@
 #include <memory>
 #include <utility>
 
-#include "spin.hpp"
+#include "nav2_behaviors/plugins/spin.hpp"
 #include "tf2/utils.h"
 #include "tf2_geometry_msgs/tf2_geometry_msgs.hpp"
 #include "nav2_util/node_utils.hpp"
@@ -91,14 +91,14 @@ Status Spin::onRun(const std::shared_ptr<const SpinAction::Goal> command)
     cmd_yaw_);
 
   command_time_allowance_ = command->time_allowance;
-  end_time_ = steady_clock_.now() + command_time_allowance_;
+  end_time_ = this->clock_->now() + command_time_allowance_;
 
   return Status::SUCCEEDED;
 }
 
 Status Spin::onCycleUpdate()
 {
-  rclcpp::Duration time_remaining = end_time_ - steady_clock_.now();
+  rclcpp::Duration time_remaining = end_time_ - this->clock_->now();
   if (time_remaining.seconds() < 0.0 && command_time_allowance_.seconds() > 0.0) {
     stopRobot();
     RCLCPP_WARN(

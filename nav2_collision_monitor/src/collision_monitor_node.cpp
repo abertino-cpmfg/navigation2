@@ -148,6 +148,12 @@ CollisionMonitor::on_shutdown(const rclcpp_lifecycle::State & /*state*/)
 
 void CollisionMonitor::cmdVelInCallback(geometry_msgs::msg::Twist::ConstSharedPtr msg)
 {
+  // If message contains NaN or Inf, ignore
+  if (!nav2_util::validateTwist(*msg)) {
+    RCLCPP_ERROR(get_logger(), "Velocity message contains NaNs or Infs! Ignoring as invalid!");
+    return;
+  }
+
   process({msg->linear.x, msg->linear.y, msg->angular.z});
 }
 
@@ -349,7 +355,9 @@ void CollisionMonitor::process(const Velocity & cmd_vel_in)
 
   // Fill collision_points array from different data sources
   for (std::shared_ptr<Source> source : sources_) {
-    source->getData(curr_time, collision_points);
+    if (source->getEnabled()) {
+      source->getData(curr_time, collision_points);
+    }
   }
 
   // By default - there is no action
@@ -358,6 +366,9 @@ void CollisionMonitor::process(const Velocity & cmd_vel_in)
   std::shared_ptr<Polygon> action_polygon;
 
   for (std::shared_ptr<Polygon> polygon : polygons_) {
+    if (!polygon->getEnabled()) {
+      continue;
+    }
     if (robot_action.action_type == STOP) {
       // If robot already should stop, do nothing
       break;
@@ -382,7 +393,7 @@ void CollisionMonitor::process(const Velocity & cmd_vel_in)
     printAction(robot_action, action_polygon);
   }
 
-  // Publish requred robot velocity
+  // Publish required robot velocity
   publishVelocity(robot_action);
 
   // Publish polygons for better visualization
@@ -475,7 +486,9 @@ void CollisionMonitor::printAction(
 void CollisionMonitor::publishPolygons() const
 {
   for (std::shared_ptr<Polygon> polygon : polygons_) {
-    polygon->publish();
+    if (polygon->getEnabled()) {
+      polygon->publish();
+    }
   }
 }
 
