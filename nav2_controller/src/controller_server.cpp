@@ -63,7 +63,7 @@ ControllerServer::ControllerServer(const rclcpp::NodeOptions & options)
 
   // The costmap node is used in the implementation of the controller
   costmap_ros_ = std::make_shared<nav2_costmap_2d::Costmap2DROS>(
-    "local_costmap", std::string{get_namespace()}, "local_costmap");
+    "local_costmap", std::string{get_namespace()}, "local_costmap", options);
 }
 
 ControllerServer::~ControllerServer()

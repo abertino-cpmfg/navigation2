@@ -87,6 +87,14 @@ public:
   explicit Costmap2DROS(const std::string & name);
 
   /**
+   * @brief  Constructor for the wrapper, the node will
+   * be placed in a namespace equal to the node's name
+   * @param name Name of the costmap ROS node
+   * @param options Options to pass to the costmap ROS node
+   */
+  explicit Costmap2DROS(const std::string & name, const rclcpp::NodeOptions & options);
+
+  /**
    * @brief  Constructor for the wrapper
    * @param name Name of the costmap ROS node
    * @param parent_namespace Absolute namespace of the node hosting the costmap node
@@ -96,6 +104,19 @@ public:
     const std::string & name,
     const std::string & parent_namespace,
     const std::string & local_namespace);
+
+  /**
+   * @brief  Constructor for the wrapper
+   * @param name Name of the costmap ROS node
+   * @param parent_namespace Absolute namespace of the node hosting the costmap node
+   * @param local_namespace Namespace to append to the parent namespace
+   * @param options Options to pass to the costmap ROS node
+   */
+  explicit Costmap2DROS(
+    const std::string & name,
+    const std::string & parent_namespace,
+    const std::string & local_namespace,
+    const rclcpp::NodeOptions & options);
 
   /**
    * @brief A destructor
